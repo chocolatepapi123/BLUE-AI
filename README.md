@@ -76,3 +76,8 @@ node --check web/app.js
 - Automatic scanner uses stored data. Refresh option requests data from a free provider each scheduled run and may fail/rate-limit. Scheduler works only while backend process remains alive.
 - Strategy profiles are not yet interpreted as executable rule graphs. No automatic strategy learning, semantic model ingestion, image/video understanding, or autonomous self-improvement.
 - Protect Telegram tokens and downloaded market files. Backup/restore is provided for local JSON state.
+
+
+## Autonomous research batch (experimental)
+
+Knowledge page now supports batch YouTube links and multiple PDF/text uploads. Captions are fetched when available; PDF text is extracted in the browser; keyword/regex extraction detects a limited list of instruments, timeframes, sessions and setup concepts; it then attempts free Yahoo Finance proxy-data retrieval and runs the built-in sweep/displacement backtest across detected markets/timeframes (or exploratory defaults). Batch reports are stored locally. This is an experimental workflow: it does **not** infer complete strategy rules semantically, compile extracted rules into executable strategies, or validate the extracted strategy itself. Backtest results are only for the existing baseline rule.

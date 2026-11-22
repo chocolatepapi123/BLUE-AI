@@ -1,7 +1,7 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 import json, urllib.parse, os, threading, time, urllib.request, urllib.error
-from engine.core import load_csv, analyze, backtest, researcher, multi_timeframe, generate_signal, optimize
+from engine.core import load_csv, analyze, backtest, researcher, multi_timeframe, generate_signal, optimize, extract_research_profile
 ROOT=Path(__file__).parent; WEB=ROOT/'web'; DATA=ROOT/'data'; DATA.mkdir(exist_ok=True)
 def readjson(name,default):
  try:return json.loads((DATA/name).read_text())
@@ -90,6 +90,18 @@ class Handler(SimpleHTTPRequestHandler):
       selected=[m for m in selected if m.get('symbol')==symbol]
      for market in selected:sets[market['timeframe']]=market['bars']
      return self.send_json(multi_timeframe(sets))
+    if route=='/api/research-batch':
+     sources=b.get('sources',[]); combined='\n\n'.join((x.get('title','')+'\n'+x.get('content','')) for x in sources); profile=extract_research_profile(combined)
+     batch={'created':time.strftime('%Y-%m-%d %H:%M:%S'),'sourceCount':len(sources),'sources':[{'title':x.get('title','Source'),'kind':x.get('kind','text'),'url':x.get('url','')} for x in sources],'profile':profile,'marketTests':[],'warnings':['Extraction is heuristic keyword matching, not semantic AI.','The existing backtest tests the built-in sweep/displacement rule, not extracted strategy rules.','Yahoo Finance data may be delayed, unavailable, or use proxy instruments.']}
+     symbols=profile['symbols'] or ['EURUSD','GBPUSD','XAUUSD']; tfs=profile['timeframes'] or ['M15','H1']; markets=readjson('markets.json',{})
+     for sym in symbols[:4]:
+      for tf in tfs[:3]:
+       item={'symbol':sym,'timeframe':tf}
+       try:
+        bars=fetch_yahoo(sym,tf,b.get('range','3mo')); key=sym+'_'+tf; markets[key]={'symbol':sym,'timeframe':tf,'bars':bars,'source':'Yahoo Finance proxy data (batch research)','updated':time.strftime('%Y-%m-%d %H:%M:%S')}; result=backtest(bars,lookback=5,rr=2,risk_pct=1,body_multiple=1.25,max_risk_pct=3,max_holding=80); item.update({'ok':True,'datasetKey':key,'bars':len(bars),'trades':result['count'],'winRate':result['winRate'],'expectancyR':result['expectancyR'],'profitFactor':result['profitFactor'],'maxDrawdownPct':result['maxDrawdownPct'],'totalR':result['totalR']})
+       except Exception as ex:item.update({'ok':False,'error':str(ex)})
+       batch['marketTests'].append(item)
+     savejson('markets.json',markets); batches=readjson('research_batches.json',[]); batches.insert(0,batch); savejson('research_batches.json',batches[:50]); return self.send_json(batch)
     if route=='/api/research':return self.send_json(researcher(readjson('knowledge.json',[]),readjson('strategies.json',[]),b.get('backtest')))
     if route=='/api/settings':
      s=readjson('settings.json',{}); s.update(b); savejson('settings.json',s); return self.send_json({'ok':True,'settings':s})

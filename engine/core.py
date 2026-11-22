@@ -112,3 +112,17 @@ def optimize(bars, risk_pct=1.0, max_risk_pct=3.0):
       validated.append({**c,'holdoutTrades':result['count'],'holdoutExpectancyR':result['expectancyR'],'holdoutWinRate':result['winRate'],'holdoutProfitFactor':result['profitFactor'],'holdoutMaxDrawdownPct':result['maxDrawdownPct']})
     validated.sort(key=lambda x:(x['holdoutTrades']>=5,x['holdoutExpectancyR']),reverse=True)
     return {'trainBars':len(train),'holdoutBars':len(test),'candidatesTested':len(candidates),'ranked':validated,'warning':'Chronological 70/30 split, not walk-forward. Parameter search can overfit; use larger data, costs and independent validation before trading.'}
+
+
+def extract_research_profile(text):
+    """Transparent heuristic extraction; does not claim semantic AI."""
+    t=(text or '').lower()
+    symbol_patterns={'EURUSD':r'\b(?:eur\s*/?\s*usd|eurusd)\b','GBPUSD':r'\b(?:gbp\s*/?\s*usd|gbpusd|cable)\b','USDJPY':r'\b(?:usd\s*/?\s*jpy|usdjpy)\b','XAUUSD':r'\b(?:xau\s*/?\s*usd|gold)\b','XAGUSD':r'\b(?:xag\s*/?\s*usd|silver)\b','NAS100':r'\b(?:nas100|nasdaq\s*100|nq)\b','US30':r'\b(?:us30|dow\s*jones|dj30)\b','SPX500':r'\b(?:spx500|s&p\s*500|sp500)\b'}
+    symbols=[sym for sym,pat in symbol_patterns.items() if re.search(pat,t)]
+    tf_patterns={'M1':r'\b(?:1\s*min(?:ute)?|m1)\b','M5':r'\b(?:5\s*min(?:ute)?|m5)\b','M15':r'\b(?:15\s*min(?:ute)?|m15)\b','M30':r'\b(?:30\s*min(?:ute)?|m30)\b','H1':r'\b(?:1\s*hour|h1|hourly)\b','H4':r'\b(?:4\s*hour|h4)\b','D1':r'\b(?:daily|d1|1\s*day)\b','W1':r'\b(?:weekly|w1)\b'}
+    timeframes=[tf for tf,pat in tf_patterns.items() if re.search(pat,t)]
+    session_patterns=[('Asia',r'\b(?:asia|asian session|tokyo)\b'),('London',r'\b(?:london|ldn)\b'),('New York',r'\b(?:new york|ny session|ny killzone)\b'),('London Open',r'\b(?:london open|lo killzone)\b')]
+    sessions=[name for name,pat in session_patterns if re.search(pat,t)]
+    terms=['liquidity sweep','stop hunt','liquidity grab','unicorn model','fair value gap','fvg','ifvg','order block','breaker block','market structure shift','mss','bos','break of structure','choch','displacement','premium and discount']
+    setups=[term for term in terms if term in t]
+    return {'symbols':symbols,'timeframes':timeframes,'sessions':sessions,'setupTerms':setups,'hasEntryTerms':bool(re.search(r'\b(?:entry|enter|trigger|confirmation)\b',t)),'hasRiskTerms':bool(re.search(r'\b(?:stop loss|sl|take profit|tp|risk reward|rr)\b',t)),'wordCount':len((text or '').split()),'parser':'keyword/regex extraction; verify manually'}

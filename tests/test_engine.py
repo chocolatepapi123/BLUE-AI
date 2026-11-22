@@ -22,4 +22,11 @@ class EngineTests(unittest.TestCase):
   self.assertIn('sweep',c); self.assertIn('fair_value_gap',c); self.assertIn('market_structure',c)
  def test_optimizer_requires_data(self):
   with self.assertRaises(ValueError): optimize(self.makebars(40))
+ def test_extract_research_profile(self):
+  from engine.core import extract_research_profile
+  p=extract_research_profile('Trade EURUSD and XAUUSD on M5 and H1 during London and New York. Look for liquidity sweep, FVG, displacement and MSS.')
+  self.assertIn('EURUSD',p['symbols']); self.assertIn('XAUUSD',p['symbols'])
+  self.assertIn('M5',p['timeframes']); self.assertIn('H1',p['timeframes'])
+  self.assertIn('London',p['sessions']); self.assertIn('New York',p['sessions']); self.assertIn('fvg',p['setupTerms'])
+
 if __name__=='__main__':unittest.main()
