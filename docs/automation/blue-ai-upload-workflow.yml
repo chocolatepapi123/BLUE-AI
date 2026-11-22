@@ -1,0 +1,72 @@
+name: BLUE AI ZIP Installer
+on:
+  push:
+    paths:
+      - 'incoming/*.zip'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: blue-ai-installer
+  cancel-in-progress: false
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find archive
+        id: archive
+        shell: bash
+        run: |
+          file=$(find incoming -maxdepth 1 -type f -name '*.zip' | sort | head -n1)
+          test -n "$file" || { echo 'No ZIP in incoming/'; exit 1; }
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+      - name: Validate and extract
+        env:
+          ARCHIVE: ${{ steps.archive.outputs.file }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, zipfile, shutil
+          archive=os.environ['ARCHIVE']; root=pathlib.Path.cwd().resolve()
+          blocked={'.git','incoming'}
+          allowed={'.py','.js','.jsx','.ts','.tsx','.json','.css','.html','.md','.txt','.toml','.yaml','.yml','.sh','.sql','.svg','.ico','.png','.jpg','.jpeg','.webp','.webmanifest'}
+          with zipfile.ZipFile(archive) as z:
+              entries=z.infolist()
+              if not entries or len(entries)>10000: raise SystemExit('Empty archive or too many entries')
+              total=0
+              files=[e.filename for e in entries if not e.is_dir()]
+              parts=[pathlib.PurePosixPath(f.replace('\\','/')).parts for f in files]
+              prefix=''
+              if parts and all(len(p)>1 for p in parts) and len({p[0] for p in parts})==1: prefix=parts[0][0]
+              for e in entries:
+                  name=e.filename.replace('\\','/'); p=pathlib.PurePosixPath(name)
+                  if p.is_absolute() or '..' in p.parts: raise SystemExit(f'Unsafe path: {name}')
+                  if any(x in blocked for x in p.parts): raise SystemExit(f'Blocked path: {name}')
+                  # Workflows are validated as archive paths but never installed from user ZIPs.
+                  if '.github' in p.parts: continue
+                  if e.is_dir(): continue
+                  total+=e.file_size
+                  if total>100*1024*1024: raise SystemExit('Archive expands beyond 100 MB')
+                  if p.suffix.lower() not in allowed: raise SystemExit(f'Unsupported file: {name}')
+              for e in entries:
+                  if e.is_dir(): continue
+                  p=pathlib.PurePosixPath(e.filename.replace('\\','/'))
+                  parts=list(p.parts)
+                  if prefix and parts and parts[0]==prefix: parts=parts[1:]
+                  if not parts or any(x in blocked for x in parts) or '.github' in parts: continue
+                  target=(root.joinpath(*parts)).resolve()
+                  if root not in target.parents: raise SystemExit('Path traversal detected')
+                  target.parent.mkdir(parents=True,exist_ok=True)
+                  with z.open(e) as src, open(target,'wb') as dst: shutil.copyfileobj(src,dst)
+          print('Extracted safely')
+          PY
+      - name: Remove archive and commit changes
+        run: |
+          rm -f "${{ steps.archive.outputs.file }}"
+          git config user.name 'BLUE AI Installer'
+          git config user.email 'actions@github.com'
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'Install BLUE AI package from ZIP'
+            git push
+          fi

@@ -1,0 +1,21 @@
+name: BLUE AI validation
+on:
+  push:
+    branches: [main, master]
+  paths-ignore:
+    - 'incoming/*.zip'
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: JavaScript syntax check
+        run: node --check app.js
+      - name: Static smoke check
+        run: python scripts/smoke_check.py
+      - name: Backtest engine fixture
+        run: node scripts/test-engine.js

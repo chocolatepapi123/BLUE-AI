@@ -1,0 +1,2 @@
+# OHLC CSV data format
+Required headers (case-insensitive): `open`, `high`, `low`, `close`. Optional timestamp/date/time and volume. Header aliases O/H/L/C are accepted. Bars should be chronological, use a consistent timezone (prefer UTC ISO-8601), and be sourced consistently with the instrument you're actually trading. This browser importer does not validate provider identity, duplicate bars, gaps, or market-specific CFD prices.
