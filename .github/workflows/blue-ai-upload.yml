@@ -1,0 +1,67 @@
+name: BLUE AI ZIP Installer
+
+on:
+  push:
+    paths:
+      - 'incoming/*.zip'
+      - 'incoming/**/*.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: blue-ai-installer
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Safely install ZIP package
+        run: |
+          python3 - <<'PY'
+          import pathlib, zipfile, shutil
+          root=pathlib.Path('.').resolve()
+          incoming=root/'incoming'
+          archives=sorted(incoming.rglob('*.zip')) if incoming.exists() else []
+          if not archives:
+              raise SystemExit('No uploaded ZIP found under incoming/')
+          allowed={'.py','.js','.jsx','.ts','.tsx','.json','.css','.html','.md','.txt','.toml','.yaml','.yml','.sh','.sql','.svg','.ico','.png','.jpg','.jpeg','.webp'}
+          installed=[]
+          for archive in archives:
+              with zipfile.ZipFile(archive) as z:
+                  entries=[e for e in z.infolist() if not e.is_dir()]
+                  if not entries: raise SystemExit(f'Empty archive: {archive}')
+                  paths=[pathlib.PurePosixPath(e.filename.replace(chr(92),'/')) for e in entries]
+                  strip=''
+                  if paths and all(len(p.parts)>1 for p in paths) and len({p.parts[0] for p in paths})==1:
+                      strip=paths[0].parts[0]
+                  for e,p in zip(entries,paths):
+                      if p.is_absolute() or '..' in p.parts: raise SystemExit(f'Unsafe archive path: {e.filename}')
+                      parts=list(p.parts)
+                      if strip and parts[0]==strip: parts=parts[1:]
+                      if not parts: continue
+                      # Protect repository metadata, workflows and the incoming directory.
+                      if parts[0] in {'.git','.github','incoming','github'}: continue
+                      target=pathlib.Path(*parts)
+                      if target.suffix.lower() not in allowed: continue
+                      dest=(root/target).resolve()
+                      if root not in dest.parents: raise SystemExit(f'Path escaped repository: {e.filename}')
+                      dest.parent.mkdir(parents=True,exist_ok=True)
+                      with z.open(e) as src,open(dest,'wb') as out: shutil.copyfileobj(src,out)
+                      installed.append(str(target))
+              archive.unlink()
+          if not installed: raise SystemExit('ZIPs contained no installable files.')
+          print('Installed files:',*installed,sep='\\n')
+          PY
+      - name: Commit extracted files
+        run: |
+          git config user.name 'BLUE AI Installer'
+          git config user.email 'actions@github.com'
+          git add -A
+          # Keep upload archives and workflow files out of the installer commit.
+          git reset -- .github incoming github
+          if git diff --cached --quiet; then echo 'No changes to commit'; else git commit -m 'Install files from incoming ZIP'; git push; fi
