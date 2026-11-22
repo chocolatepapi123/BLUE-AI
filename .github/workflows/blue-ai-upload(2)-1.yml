@@ -1,0 +1,48 @@
+name: BLUE AI ZIP uploader
+on:
+  workflow_dispatch:
+  push:
+    paths: ['incoming/**']
+permissions:
+  contents: write
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack uploaded ZIPs into repository
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p incoming
+          zips=(incoming/*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then echo "No ZIPs found in incoming"; exit 0; fi
+          for zip in "${zips[@]}"; do
+            tmp=$(mktemp -d)
+            unzip -q "$zip" -d "$tmp"
+            root="$tmp"
+            # Strip one common wrapper directory only when it contains the package files.
+            entries=("$tmp"/*)
+            if [ ${#entries[@]} -eq 1 ] && [ -d "${entries[0]}" ]; then root="${entries[0]}"; fi
+            while IFS= read -r -d '' file; do
+              rel="${file#"$root"/}"
+              case "$rel" in
+                .git/*|.github/*|incoming/*|node_modules/*|.env|*.pem|*.key) echo "Skipping protected path: $rel"; continue;;
+              esac
+              case "$rel" in
+                *.py|*.js|*.jsx|*.ts|*.tsx|*.json|*.css|*.html|*.md|*.txt|*.toml|*.yaml|*.yml|*.sh|*.sql|*.svg|*.ico|*.png|*.jpg|*.jpeg|*.webp) ;;
+                *) echo "Skipping unsupported extension: $rel"; continue;;
+              esac
+              mkdir -p "$(dirname "$rel")"
+              cp "$file" "$rel"
+            done < <(find "$root" -type f -print0)
+            rm -rf "$tmp" "$zip"
+          done
+      - name: Commit imported files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Import uploaded BLUE AI ZIP"
+          git push
